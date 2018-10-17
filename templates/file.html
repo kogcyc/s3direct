@@ -1,109 +1,121 @@
+
 <html>
 
-  <head>
-  
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<head>
 
-	<style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-		body {
-			background: #fff;
-			color: #222;
-			padding: 10px 0px;
-		}
+    <style>
+        body {
+            background: #fff;
+            color: #222;
+            padding: 10px 0px;
+        }
+        
+        #preview {
+            background: #333;
+            width: 240px;
+            height: 160px;
+            border: 4px solid #ccc;
+        }
+        
+        #link {
+            font-size: 0.8em;
+            font-family: monospace;
+            font-weight: 900;
+        }
+    </style>
 
-		#preview {
-			background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAYAAACM/rhtAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAN1wAADdcBQiibeAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABcSURBVFiF7ddBDcAwDATBpCojEzRBY0pB7EXqYwfAaeWfd3efFTQzybn1RNcuMJAykDKQMpAykDKQMpAykDKQetM/RFVF935/QQMpAykDKQMpAykDKQMpAykDqQ8eUgg4Z04lPgAAAABJRU5ErkJggg==);
-		}
+</head>
 
-	</style>
+<body>
 
-  </head>
+    <br>
+    <br>
 
-  <body>
+    <input type="file" id="file-input">
+    <br>
+    <br>
 
-    <br><br>
+    <img id="preview">
+    <br>
+    <br>
 
-    <input type="file" id="file-input"><br><br>
-
-    <img id="preview" height=200 width=280><br><br>
-    
-    <p style="font-size: 0.8em;font-family: monospace; font-weight: 900;" id="link">[empty]</p>
+    <p id="link">[empty]</p>
 
     <script type="text/javascript">
+        /*
+              Function to carry out the actual POST request to S3 using the signed request from the Python app.
+            */
+        function uploadFile(file, s3Data, url) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', s3Data.url);
+            xhr.setRequestHeader('x-amz-acl', 'public-read');
 
-    /*
-      Function to carry out the actual POST request to S3 using the signed request from the Python app.
-    */
-    function uploadFile(file, s3Data, url){
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', s3Data.url);
-      xhr.setRequestHeader('x-amz-acl', 'public-read');
+            const postData = new FormData();
+            for (key in s3Data.fields) {
+                postData.append(key, s3Data.fields[key]);
+            }
+            postData.append('file', file);
 
-      const postData = new FormData();
-      for(key in s3Data.fields){
-        postData.append(key, s3Data.fields[key]);
-      }
-      postData.append('file', file);
-	  
-
-      xhr.onreadystatechange = () => {
-        if(xhr.readyState === 4){
-          if(xhr.status === 200 || xhr.status === 204){
-			document.getElementById("preview").removeAttribute("height");
-            document.getElementById('preview').src = url;
-			document.getElementById("link").innerHTML = '&nbsp;&nbsp;' + url;
-          }
-          else{
-            alert('Could not upload file.');
-          }
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200 || xhr.status === 204) {
+                        document.getElementById("preview").removeAttribute("height");
+                        document.getElementById('preview').src = url;
+                        document.getElementById("link").innerHTML = '![](' + url + ')';
+                    } else {
+                        alert('Could not upload file.');
+                    }
+                }
+            };
+            xhr.send(postData);
         }
-      };
-      xhr.send(postData);
-    }
 
-    /*
-      Function to get the temporary signed request from the Python app.
-      If request successful, continue to upload the file using this signed
-      request.
-    */
-    function getSignedRequest(file){
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', `/sign-s3?file-name=${file.name}&file-type=${file.type}`);
-      xhr.onreadystatechange = () => {
-        if(xhr.readyState === 4){
-          if(xhr.status === 200){
-            const response = JSON.parse(xhr.responseText);
-            uploadFile(file, response.data, response.url);
-          }
-          else{
-            alert('Could not get signed URL.');
-          }
+        /*
+          Function to get the temporary signed request from the Python app.
+          If request successful, continue to upload the file using this signed
+          request.
+        */
+        function getSignedRequest(file) {
+            const xhr = new XMLHttpRequest();
+
+            /* NOTE: file.name & file.type are attributes of the parameter file - I've chosen to assign file.name myself */
+            filename_base36 = Math.floor(Date.now() / 1000).toString(36); /* the time in Base36 */
+            xhr.open('GET', `/sign-s3?file-name=${filename_base36}&file-type=${file.type}`);
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        const response = JSON.parse(xhr.responseText);
+                        uploadFile(file, response.data, response.url);
+                    } else {
+                        alert('Could not get signed URL.');
+                    }
+                }
+            };
+            xhr.send();
         }
-      };
-      xhr.send();
-    }
 
-    /*
-       Function called when file input updated. If there is a file selected, then
-       start upload procedure by asking for a signed request from the app.
-    */
-    function initUpload(){
-      const files = document.getElementById('file-input').files;
-      const file = files[0];
-      if(!file){
-        return alert('No file selected.');
-      }
-      getSignedRequest(file);
-    }
+        /*
+           Function called when file input updated. If there is a file selected, then
+           start upload procedure by asking for a signed request from the app.
+        */
+        function initUpload() {
+            const files = document.getElementById('file-input').files;
+            const file = files[0];
+            if (!file) {
+                return alert('No file selected.');
+            }
+            getSignedRequest(file);
+        }
 
-    /*
-       Bind listeners when the page loads.
-    */
-    (() => {
-      document.getElementById('file-input').onchange = initUpload;
-    })();
-
+        /*
+           Bind listeners when the page loads.
+        */
+        (() => {
+            document.getElementById('file-input').onchange = initUpload;
+        })();
     </script>
-  </body>
+</body>
+
 </html>
